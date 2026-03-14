@@ -20,6 +20,29 @@ This tool is heavily inspired by [hcxdumptool](https://github.com/ZerBea/hcxdump
 
 If you have questions or any issues, you can reach me on the [AngryOxide Discord](https://discord.gg/QsEgaFndsQ)
 
+## GUI Version
+
+A new GUI (Graphical User Interface) version of AngryOxide is available in the `src/gui/` directory.
+
+### Building the GUI
+
+To build and run the GUI version:
+
+```bash
+# Build the GUI
+cd src/gui
+cargo build --release
+
+# Run the GUI
+./target/release/angryoxide-gui
+```
+
+### Features
+- Graphical interface for easier configuration
+- Real-time visualization of attacks and results
+- Point-and-click target selection
+- Status monitoring with visual feedback
+
 ## I wanna use it!
 
 You can download pre-compiled binaries of AngryOxide in the [releases](https://github.com/Ragnt/AngryOxide/releases/latest).
