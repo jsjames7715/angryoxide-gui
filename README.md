@@ -22,20 +22,21 @@ If you have questions or any issues, you can reach me on the [AngryOxide Discord
 
 ## GUI Version
 
-A new GUI (Graphical User Interface) version of AngryOxide is available in the `src/gui/` directory.
+A new GUI (Graphical User Interface) version of AngryOxide is available.
 
-### Building the GUI
+### Running the GUI
 
-To build and run the GUI version:
+To run the GUI version, use the `--use_gui` flag when running AngryOxide:
 
 ```bash
-# Build the GUI
-cd src/gui
+# Build AngryOxide first (if not already built)
 cargo build --release
 
-# Run the GUI
-./target/release/angryoxide-gui
+# Run with GUI mode
+sudo ./target/release/angryoxide --use_gui --interface <INTERFACE>
 ```
+
+Replace `<INTERFACE>` with your network interface (e.g., `wlan0`).
 
 ### Features
 - Graphical interface for easier configuration
