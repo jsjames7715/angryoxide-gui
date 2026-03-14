@@ -2185,6 +2185,18 @@ pub fn process_frame(oxide: &mut OxideRuntime, packet: &[u8]) -> Result<(), Stri
                 Frame::QosCfAckCfPoll(data_frame) => {
                     handle_null_data_frame(&data_frame, &radiotap, oxide)?
                 }
+                Frame::ActionNoAck(_) => {
+                    // ActionNoAck frames are typically used for acknowledgment of action frames
+                    // and don't require special handling in this context
+                }
+                Frame::Trigger(_) => {
+                    // Trigger frames are used in Wi-Fi 6 for triggering uplink transmissions
+                    // and don't require special handling in this context
+                }
+                Frame::NdpAnnouncement(_) => {
+                    // NDP Announcement frames are used in Wi-Fi 6 for announcing Null Data Packets
+                    // and don't require special handling in this context
+                }
             }
             // Post Processing
         }
