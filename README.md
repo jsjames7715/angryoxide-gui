@@ -26,14 +26,14 @@ A new GUI (Graphical User Interface) version of AngryOxide is available.
 
 ### Running the GUI
 
-To run the GUI version, use the `--use_gui` flag when running AngryOxide:
+To run the GUI version, use the `--use-gui` flag when running AngryOxide:
 
 ```bash
 # Build AngryOxide first (if not already built)
 cargo build --release
 
 # Run with GUI mode
-sudo ./target/release/angryoxide --use_gui --interface <INTERFACE>
+sudo ./target/release/angryoxide --use-gui --interface <INTERFACE>
 ```
 
 Replace `<INTERFACE>` with your network interface (e.g., `wlan0`).
