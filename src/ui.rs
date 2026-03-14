@@ -558,12 +558,10 @@ fn create_status_bar(
 
     let flow = match oxide.ui_state.paused {
         true => Span::from("Paused").fg(Color::Red),
-        false => {
-            match oxide.config.autoexit {
-                true => Span::from("Running (Autoexit)").fg(Color::Yellow),
-                false => Span::from("Running"),
-            }
-        }
+        false => match oxide.config.autoexit {
+            true => Span::from("Running (Autoexit)").fg(Color::Yellow),
+            false => Span::from("Running"),
+        },
     };
 
     let dataflow = Line::from(vec![

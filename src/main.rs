@@ -8,6 +8,7 @@ mod devices;
 mod eventhandler;
 mod geofence;
 mod gps;
+mod gui;
 mod matrix;
 mod oui;
 mod pcapng;
@@ -75,6 +76,7 @@ use crate::ascii::get_art;
 use crate::auth::HandshakeStorage;
 use crate::devices::{APFlags, AccessPoint, Station, WiFiDeviceList};
 use crate::eventhandler::{EventHandler, EventType};
+use crate::gui::main::AngryOxideGui;
 use crate::matrix::MatrixSnowstorm;
 use crate::snowstorm::Snowstorm;
 use crate::status::*;
@@ -97,7 +99,7 @@ use std::path::Path;
 use std::process::exit;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 use std::{fmt, thread};
 
@@ -173,6 +175,10 @@ struct Arguments {
     /// Optional - Set the tool to headless mode without a UI. (useful with --autoexit)
     #[arg(long, help_heading = "Advanced Options")]
     headless: bool,
+
+    /// Optional - Set the tool to GUI mode (experimental)
+    #[arg(long, help_heading = "Advanced Options")]
+    use_gui: bool,
 
     /// Optional - AO will auto-exit when all targets have a valid hashline.
     #[arg(long, help_heading = "Advanced Options")]
@@ -261,27 +267,47 @@ struct Arguments {
 
 #[derive(Default)]
 pub struct Counters {
-    pub frame_count: u64,
-    pub eapol_count: u64,
-    pub error_count: u64,
     pub packet_id: u64,
-    pub empty_reads: u64,
-    pub empty_reads_rate: u64,
     pub seq1: u16,
     pub seq2: u16,
     pub seq3: u16,
     pub seq4: u16,
     pub prespidx: u8,
-    pub beacons: usize,
-    pub data: usize,
-    pub null_data: usize,
-    pub probe_requests: usize,
-    pub probe_responses: usize,
-    pub control_frames: usize,
-    pub authentication: usize,
-    pub deauthentication: usize,
-    pub association: usize,
-    pub reassociation: usize,
+    pub frame_count: u64,
+    pub beacons: u64,
+    pub probe_requests: u64,
+    pub probe_responses: u64,
+    pub error_count: u64,
+    pub authentication: u64,
+    pub association: u64,
+    pub reassociation: u64,
+    pub deauthentication: u64,
+    pub control_frames: u64,
+    pub data: u64,
+    pub null_data: u64,
+    pub eapol_count: u64,
+    pub empty_reads: u64,
+    pub empty_reads_rate: u64,
+}
+
+#[derive(Default)]
+pub struct Config {
+    notx: bool,
+    original_notx: bool,
+    disable_deauth: bool,
+    disable_disassoc: bool,
+    disable_anon: bool,
+    disable_csa: bool,
+    disable_pmkid: bool,
+    disable_roguem2: bool,
+    autoexit: bool,
+    headless: bool,
+    notar: bool,
+    autohunt: bool,
+    combine: bool,
+    disable_mouse: bool,
+    use_gui: bool,
+    timeout: u64,
 }
 
 impl Counters {
@@ -365,22 +391,7 @@ pub struct RawSockets {
     tx_socket: OwnedFd,
 }
 
-pub struct Config {
-    notx: bool,
-    original_notx: bool,
-    disable_deauth: bool,
-    disable_disassoc: bool,
-    disable_anon: bool,
-    disable_csa: bool,
-    disable_pmkid: bool,
-    disable_roguem2: bool,
-    autoexit: bool,
-    headless: bool,
-    notar: bool,
-    autohunt: bool,
-    combine: bool,
-    disable_mouse: bool,
-}
+// Removed duplicate Config struct to avoid name clash. The primary Config is defined above with all fields, including timeout.
 
 pub struct IfHardware {
     netlink: Nl80211,
@@ -1051,6 +1062,8 @@ impl OxideRuntime {
             autohunt: can_autohunt,
             combine: cli_args.combine,
             disable_mouse: cli_args.disablemouse,
+            use_gui: cli_args.use_gui,
+            timeout: cli_args.timeout,
         };
 
         let if_hardware = IfHardware {
@@ -1193,7 +1206,7 @@ impl OxideRuntime {
     }
 }
 
-fn process_frame(oxide: &mut OxideRuntime, packet: &[u8]) -> Result<(), String> {
+pub fn process_frame(oxide: &mut OxideRuntime, packet: &[u8]) -> Result<(), String> {
     let radiotap = match Radiotap::from_bytes(packet) {
         Ok(radiotap) => radiotap,
         Err(error) => {
@@ -2495,7 +2508,7 @@ fn write_packet(fd: i32, packet: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-fn read_frame(oxide: &mut OxideRuntime) -> Result<Vec<u8>, io::Error> {
+pub fn read_frame(oxide: &mut OxideRuntime) -> Result<Vec<u8>, io::Error> {
     let mut buffer = vec![0u8; 6000];
     let packet_len = unsafe {
         libc::read(
@@ -2621,8 +2634,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut terminal: Option<Terminal<CrosstermBackend<std::io::Stdout>>> = None;
 
-    if !oxide.config.headless {
-        // UI is in normal mode
+    if oxide.config.use_gui {
+        // Launch GUI mode - this spawns its own processing thread
+        let gui_runtime = Arc::new(Mutex::new(oxide));
+        let native_options = eframe::NativeOptions {
+            viewport: egui::ViewportBuilder::default()
+                .with_inner_size([1200.0, 800.0])
+                .with_min_inner_size([800.0, 600.0]),
+            ..Default::default()
+        };
+        eframe::run_native(
+            "AngryOxide GUI",
+            native_options,
+            Box::new(|_cc| {
+                // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals
+                Ok(Box::new(AngryOxideGui::new(gui_runtime.clone())))
+            }),
+        )?;
+        // GUI mode blocks until closed, so we can exit after
+        // The processing thread is stopped by AngryOxideGui::drop()
+        return Ok(());
+    }
+
+    if oxide.config.headless {
+        // UI is in headless mode
+        ctrlc::set_handler(move || {
+            r.store(false, Ordering::SeqCst);
+        })
+        .expect("Error setting Ctrl-C handler");
+    } else {
+        // UI is in normal terminal mode
         execute!(stdout(), Hide)?;
         execute!(stdout(), EnterAlternateScreen)?;
         if !oxide.config.disable_mouse {
@@ -2632,12 +2673,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         initialize_panic_handler(oxide.config.disable_mouse);
         terminal =
             Some(Terminal::new(CrosstermBackend::new(stdout())).expect("Cannot allocate terminal"));
-    } else {
-        // UI is in headless mode
-        ctrlc::set_handler(move || {
-            r.store(false, Ordering::SeqCst);
-        })
-        .expect("Error setting Ctrl-C handler");
     }
 
     while running.load(Ordering::SeqCst) {
@@ -2965,22 +3000,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 }
                                             }
                                         }
-                                        KeyCode::Esc => {
-                                            match oxide.ui_state.current_menu {
-                                                MenuType::AccessPoints => {
-                                                    oxide.ui_state.ap_state.select(None);
-                                                }
-                                                MenuType::Clients => {
-                                                    oxide.ui_state.sta_state.select(None);
-                                                }
-                                                MenuType::Handshakes => {
-                                                    oxide.ui_state.hs_state.select(None);
-                                                }
-                                                MenuType::Messages => {
-                                                    oxide.ui_state.messages_state.select(None);
-                                                }
+                                        KeyCode::Esc => match oxide.ui_state.current_menu {
+                                            MenuType::AccessPoints => {
+                                                oxide.ui_state.ap_state.select(None);
                                             }
-                                        }
+                                            MenuType::Clients => {
+                                                oxide.ui_state.sta_state.select(None);
+                                            }
+                                            MenuType::Handshakes => {
+                                                oxide.ui_state.hs_state.select(None);
+                                            }
+                                            MenuType::Messages => {
+                                                oxide.ui_state.messages_state.select(None);
+                                            }
+                                        },
                                         _ => {}
                                     }
                                 }
@@ -2998,12 +3031,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         EventType::Tick => {
                             // This part updates the UI using the terminal, only if it's initialized
-                            let _ = print_ui(
-                                term,
-                                &mut oxide,
-                                start_time,
-                                frame_rate,
-                            );
+                            let _ = print_ui(term, &mut oxide, start_time, frame_rate);
                         }
                     }
                 }
@@ -3012,38 +3040,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if oxide.ui_state.add_target {
             match oxide.ui_state.current_menu {
-                MenuType::AccessPoints => { // Only works on AP menu
+                MenuType::AccessPoints => {
+                    // Only works on AP menu
                     if let Some(ref ap) = oxide.ui_state.ap_selected_item {
                         if let Some(accesspoint) = oxide.access_points.get_device(&ap.mac_address) {
                             if accesspoint.is_target() {
-                                    oxide.status_log.add_message(
-                                        StatusMessage::new(
-                                            MessageType::Warning,
-                                            format!("Removed Target: {}", ap.mac_address)
-                                        ),
-                                    );
-                                    accesspoint.is_target = false;
-                                    oxide.target_data.targets.remove_mac(&accesspoint.mac_address);
-                                    if let Some(ssid) = &ap.ssid {
-                                        oxide
-                                            .target_data
-                                            .targets
-                                            .remove_ssid(&ssid.to_string());
+                                oxide.status_log.add_message(StatusMessage::new(
+                                    MessageType::Warning,
+                                    format!("Removed Target: {}", ap.mac_address),
+                                ));
+                                accesspoint.is_target = false;
+                                oxide
+                                    .target_data
+                                    .targets
+                                    .remove_mac(&accesspoint.mac_address);
+                                if let Some(ssid) = &ap.ssid {
+                                    oxide.target_data.targets.remove_ssid(&ssid.to_string());
+                                }
+                                if oxide.target_data.targets.empty() {
+                                    if cli.notransmit {
+                                        // this should go back to nuking everything unless notx is set to true.
+                                        oxide.config.notx = true;
                                     }
-                                    if oxide.target_data.targets.empty() {
-                                        if cli.notransmit { // this should go back to nuking everything unless notx is set to true.
-                                            oxide.config.notx = true;
-                                        }
-                                        // make sure autoexit is turned off if we disable the target
-                                        oxide.config.autoexit = false;
-                                    }
+                                    // make sure autoexit is turned off if we disable the target
+                                    oxide.config.autoexit = false;
+                                }
                             } else {
-                                oxide.status_log.add_message(
-                                    StatusMessage::new(
-                                        MessageType::Warning,
-                                        format!("Added Target: {}", ap.mac_address)
-                                    ),
-                                );
+                                oxide.status_log.add_message(StatusMessage::new(
+                                    MessageType::Warning,
+                                    format!("Added Target: {}", ap.mac_address),
+                                ));
                                 accesspoint.is_target = true;
                                 oxide
                                     .target_data
@@ -3052,12 +3078,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         addr: ap.mac_address,
                                     }));
                                 if let Some(ssid) = &ap.ssid {
-                                    oxide
-                                        .target_data
-                                        .targets
-                                        .add(Target::SSID(targets::TargetSSID {
+                                    oxide.target_data.targets.add(Target::SSID(
+                                        targets::TargetSSID {
                                             ssid: ssid.to_string(),
-                                        }));
+                                        },
+                                    ));
                                 }
                                 if oxide.config.notx {
                                     oxide.config.notx = false;

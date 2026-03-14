@@ -145,7 +145,6 @@ pub fn setup_database(conn: &Connection, datasource: String, interface: Interfac
     Ok(())
 }
 
-
 fn add_frame(conn: &Connection, frx: &FrameData) {
     let packet_data = PacketData::new(frx);
     let _result = conn.execute(
@@ -176,7 +175,6 @@ fn add_frame(conn: &Connection, frx: &FrameData) {
             packet_data.packetid
         ],
     );
-
 }
 
 #[derive(Debug, Clone)]
@@ -244,7 +242,7 @@ impl PacketData {
             sourcemac: frx.source.to_long_string(),
             destmac: frx.destination.to_long_string(),
             transmac: String::from("00:00:00:00:00:00"),
-            frequency: frx.frequency.unwrap_or_default()*1000.0,
+            frequency: frx.frequency.unwrap_or_default() * 1000.0,
             devkey: String::from("0"),
             lat,
             lon,
