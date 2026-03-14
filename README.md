@@ -32,11 +32,13 @@ To run the GUI version, use the `--use-gui` flag when running AngryOxide:
 # Build AngryOxide first (if not already built)
 cargo build --release
 
-# Run with GUI mode
+# Run with GUI mode (requires a display server like X11 or Wayland)
 sudo ./target/release/angryoxide --use-gui --interface <INTERFACE>
 ```
 
 Replace `<INTERFACE>` with your network interface (e.g., `wlan0`).
+
+**Note:** The GUI requires a display server (X11/Wayland) to be running. If you're SSH'ing into a remote machine, you may need X11 forwarding enabled (`ssh -X` or `ssh -Y`).
 
 ### Features
 - Graphical interface for easier configuration
